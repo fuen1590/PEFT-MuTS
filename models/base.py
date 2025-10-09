@@ -211,14 +211,3 @@ def plot_epochwise_samples_with_label_edges(features: np.ndarray, labels: np.nda
     ax.legend(title="Epoch")
     plt.tight_layout()
     return plt
-
-
-if __name__ == '__main__':
-    data = torch.load(r"/home/fuen/DeepLearningProjects/TimeSeriesProject/train/model_result/IMDSSN_dataFD002_cut10.3engine_cut20.03rul_cut30.8random_1/visual_data.pt")
-    sample = data["tsne"]
-    label = data["labels"]
-    features = data["features"]
-    _, N, _ = sample.shape
-    for i in range(N):
-        p = plot_epochwise_samples_with_label_edges(sample[:, i:i+1], label)
-        p.show()

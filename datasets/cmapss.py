@@ -351,28 +351,3 @@ def get_partial_data(path: str,
         val.data = scaler.transform(val_data.reshape(-1, N)).reshape(B_val, T, N)
         return train, test, val, scaler
     return train, test, None, scaler
-
-
-if __name__ == '__main__':
-    np.random.seed(2025)
-    train1, test1, val1, scaler = get_data(DEFAULT_ROOT,
-                                           Subset.FD004,
-                                           window_size=35,
-                                           slide_step=15,
-                                           sensors=DEFAULT_SENSORS,
-                                           rul_threshold=125,
-                                           label_norm=True,
-                                           scaler=pre.MinMaxScaler(),
-                                           val_ratio=0.2)
-    train_partial, test, val, scaler = get_partial_data(DEFAULT_ROOT,
-                                                        Subset.FD004,
-                                                        window_size=30,
-                                                        slide_step=15,
-                                                        sensors=DEFAULT_SENSORS,
-                                                        rul_threshold=125,
-                                                        label_norm=True,
-                                                        scaler=pre.MinMaxScaler(),
-                                                        val_ratio=0,
-                                                        mode=["engine", "rul", "random"],
-                                                        ratio=[0.5, 0.05, 0.8],
-                                                        retrain_max_label=True)

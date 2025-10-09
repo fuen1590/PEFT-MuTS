@@ -167,11 +167,3 @@ class ResNet(nn.Module):
                 layers.append(layer)
         return layers
 
-
-if __name__ == '__main__':
-    model1 = ResNet(in_channels=64, size="big", stride=2)
-    saved = torch.load(r"/home/fuen/DeepLearningProjects/TimeSeriesProject/train/model_result/FMEI_encResNet_mMin0.0_mMax0.7_mom995_inDim64/model_ck.pt")
-    params = saved["encoder"]
-    model1.load_state_dict(params)
-    x = torch.randn((1, 20, 64))
-    y = model1(x)

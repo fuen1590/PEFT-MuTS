@@ -403,14 +403,3 @@ class PeftMuTS(AutoTestTrainableModule):
         out = self(x)
         return criterion(out, y)
 
-
-if __name__ == '__main__':
-    # config = PretrainedCNNConfig()
-    # config = DualMixerConfig()
-    # config = IMDSSNConfig()
-    config = PeftMuTSConfig()
-    # config = DAMCNNConfig()
-    model = PeftMuTS(config)
-    inp = torch.randn(1, 1024, 2)
-    out = model.feature_extractor(inp.to("cuda:1"))
-

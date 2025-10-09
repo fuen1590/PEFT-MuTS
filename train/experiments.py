@@ -25,25 +25,16 @@ MODEL_T = TypeVar("MODEL_T", bound=AutoTestTrainableModule)
 AVAILABLE_MODELS = {"FEIResNet": [PretrainedCNNConfig, PretrainedCNN],
                     "LinearResNet": [LinearPretrainedCNNConfig, PretrainedCNN],
                     "RandomInitResNet": [RandomCNNConfig, PretrainedCNN],
-                    "SideNet": [PeftMuTSConfig, PeftMuTS],
-                    "SideRandomNet": [PeftMuTSNoPretrainConfig, PeftMuTS],
+                    "PeftMuTS": [PeftMuTSConfig, PeftMuTS],
+                    "PeftMuTSNoPretrain": [PeftMuTSNoPretrainConfig, PeftMuTS],
                     "DAMCNN": [DAMCNNConfig, DAMCNN],
                     "IMDSSN": [IMDSSNConfig, IMDSSN],
                     "DualMixer": [DualMixerConfig, DualMixerModel], }
 
-# DATASET_CONFIGS = {"FD001": [[0.1, 1.0, 0.5], [0.1, 0.6, 0.5], [0.1, 0.3, 0.5], [0.1, 0.15, 0.5],
-#                              [0.1, 0.08, 0.5], [0.1, 0.05, 0.5], [0.1, 0.03, 0.5]],
-#                    "FD002": [[0.3, 1.0, 0.8], [0.3, 0.6, 0.8], [0.3, 0.3, 0.8], [0.3, 0.15, 0.8],
-#                              [0.3, 0.08, 0.8], [0.3, 0.05, 0.8], [0.3, 0.03, 0.8]],
-#                    "FD003": [[0.1, 1.0, 0.5], [0.1, 0.6, 0.5], [0.1, 0.3, 0.5], [0.1, 0.15, 0.5],
-#                              [0.1, 0.08, 0.5], [0.1, 0.05, 0.5], [0.1, 0.03, 0.5]],
-#                    "FD004": [[0.3, 1.0, 0.8], [0.3, 0.6, 0.8], [0.3, 0.3, 0.8], [0.3, 0.15, 0.8],
-#                              [0.3, 0.08, 0.8], [0.3, 0.05, 0.8], [0.3, 0.03, 0.8]], }
-
-DATASET_CONFIGS_CMAPSS = {"FD002": [[0.3, 1.0, 0.8], [0.3, 0.6, 0.8], [0.3, 0.3, 0.8], [0.3, 0.15, 0.8],
-                                    [0.3, 0.08, 0.8], [0.3, 0.05, 0.8], [0.3, 0.03, 0.8]],
-                          "FD004": [[0.3, 1.0, 0.8], [0.3, 0.6, 0.8], [0.3, 0.3, 0.8], [0.3, 0.15, 0.8],
-                                    [0.3, 0.08, 0.8], [0.3, 0.05, 0.8], [0.3, 0.03, 0.8]], }
+DATASET_CONFIGS_CMAPSS = {"FD002": [[0.3, 0.6, 0.8], [0.3, 0.3, 0.8],
+                                    [0.3, 0.08, 0.8], [0.3, 0.03, 0.8]],
+                          "FD004": [[0.3, 0.6, 0.8], [0.3, 0.3, 0.8],
+                                    [0.3, 0.08, 0.8], [0.3, 0.03, 0.8]], }
 DATASET_CONFIGS_BEARING = {"OP_A": [[0.05, 1.0], [0.1, 1.0]],
                            "OP_B": [[0.1, 0.1], [0.1, 0.5], [0.1, 1.0]],
                            "OP_C": [[0.1, 0.1], [0.1, 0.5], [0.1, 1.0]]}
@@ -130,8 +121,6 @@ def train(config: TrainConfig,
         if config.visual_epoch > 0 or config.feature_distance_epoch > 0:
             model.set_visual_samples(visual_samples, visual_labels)
         opt = AdamW(model.parameters(), lr=config.lr)
-        # opt = SGD(model.parameters(), lr=config.lr)
-        # sche = CosineAnnealingWarmRestarts(opt, T_0=10, T_mult=1)
         sche = ExponentialLR(opt, gamma=0.99)
         model.train_model(config.epoch,
                           MSELoss(),
@@ -146,79 +135,12 @@ def train(config: TrainConfig,
 
 
 if __name__ == '__main__':
-    # set_seed(2025)
     results = {}
     random_seeds = [20251, 20252, 20253, 20254, 20255]
-    # datasets = ["OP_A", "OP_B", "OP_C"]
-    # ratios = [[0.05, 1.0], [0.1, 0.1], [0.1, 0.1]]
     datasets = ["FD002", "FD004"]
     ratios = [[0.3, 0.03, 0.8], [0.3, 0.03, 0.8]]
-    side_dim = [[[64, 128, 1],
-                 [128, 32, 1],
-                 [128, 32, 1],
-                 [256, 4, 1],
-                 [256, 4, 1],
-                 [512, 2, 1],
-                 [512, 2, 1],
-                 [1024, 1, 1]],
-                [[64, 256, 1],
-                 [128, 64, 1],
-                 [128, 64, 1],
-                 [256, 4, 1],
-                 [256, 4, 1],
-                 [512, 2, 1],
-                 [512, 2, 1],
-                 [1024, 1, 1]],
-                [[64, 64, 1],
-                 [128, 16, 1],
-                 [128, 16, 1],
-                 [256, 2, 1],
-                 [256, 2, 1],
-                 [512, 2, 1],
-                 [512, 2, 1],
-                 [1024, 1, 1]],
-                [[64, 32, 1],
-                 [128, 8, 1],
-                 [128, 8, 1],
-                 [256, 2, 1],
-                 [256, 2, 1],
-                 [512, 2, 1],
-                 [512, 2, 1],
-                 [1024, 1, 1]],
-                [[64, 8, 1],
-                 [128, 4, 1],
-                 [128, 4, 1],
-                 [256, 2, 1],
-                 [256, 2, 1],
-                 [512, 2, 1],
-                 [512, 2, 1],
-                 [1024, 1, 1]],
-                [[64, 4, 1],
-                 [128, 2, 1],
-                 [128, 2, 1],
-                 [256, 2, 1],
-                 [256, 2, 1],
-                 [512, 2, 1],
-                 [512, 2, 1],
-                 [1024, 1, 1]]]
-    for dim in side_dim:
-        config = AVAILABLE_MODELS["SideNet"][0]()
-        model = AVAILABLE_MODELS["SideNet"][1]
-        config.side_dim = dim
-        train(config, model, times=5, seeds=random_seeds)
-
-
-    # results = {}
-    # ratio = [[0.1, 0.9], [0.1, 0.2], [0.05, 0.1]]
-    # datasets = ['OP_A', 'OP_B', 'OP_C']
-    # # datasets = ['OP_A']
-    # for key in list(AVAILABLE_MODELS.keys())[3:4]:
-    #     config = AVAILABLE_MODELS[key][0]()
-    #     for i in range(len(datasets)):
-    #         config.dataset = datasets[i]
-    #         config.data_ratio = ratio[i]
-    #         model = AVAILABLE_MODELS[key][1]
-    #         results[key + str(config.data_ratio)] = train(config, model, 5)
-    # for key in results.keys():
-    #     print(key)
-    #     print(test_results_format(results[key]))
+    config = AVAILABLE_MODELS["PeftMuTS"][0]()
+    model = AVAILABLE_MODELS["PeftMuTS"][1]
+    config.dataset = datasets[0]
+    config.data_ratio = DATASET_CONFIGS_CMAPSS[config.dataset][0]
+    train(config, model, times=5, seeds=random_seeds)

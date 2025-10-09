@@ -15,7 +15,7 @@ import torch
 
 from models.base import AutoTestTrainableModule
 from configs import IMDSSNConfig
-from pretrain_rul.pretrained_cnn import OutputLayer
+from models.peft_muts import OutputLayer
 from train import TrainableModule
 
 
@@ -408,10 +408,3 @@ class IMDSSN(AutoTestTrainableModule):
         x = self.feature_extractor(x)
         return self.output(x)
 
-
-
-if __name__ == '__main__':
-    config = IMDSSNConfig()
-    net = IMDSSN(config)
-    inp = torch.randn(2, 30, 14).cuda()
-    net_out = net(inp)

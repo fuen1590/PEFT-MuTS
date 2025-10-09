@@ -149,15 +149,3 @@ def save_dataset(train, test, val, stored_path, auto_val=0.):
         return True
     else:
         return False
-
-
-if __name__ == '__main__':
-    # ratios = [[0.1, 1.0, 0.5], [0.1, 0.6, 0.5], [0.1, 0.3, 0.5], [0.1, 0.15, 0.5],
-    #           [0.1, 0.08, 0.5], [0.1, 0.05, 0.5], [0.1, 0.03, 0.5]]
-    ratios = [[0.1, 0.5]]  # 1% 5% 10%
-    for ratio in ratios:
-        train, test, val = generate_xjtu_dataset("OP_B", [1],
-                                                 mode=['rul', 'random'],
-                                                 window_size=1024,
-                                                 step_size=32768,
-                                                 ratio=ratio)

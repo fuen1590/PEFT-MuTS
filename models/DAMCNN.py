@@ -3,7 +3,7 @@ from torch import nn
 import train
 from configs import DAMCNNConfig
 from models.base import AutoTestTrainableModule
-from pretrain_rul.pretrained_cnn import OutputLayer
+from models.peft_muts import OutputLayer
 
 """
 10.1109/TIM.2022.3210933
@@ -154,12 +154,3 @@ class DAMCNN(AutoTestTrainableModule):
         x, _ = self.lstm_2(x)
         x = x[:, -1, :].contiguous().view(x.size(0), -1)
         return x
-
-
-if __name__ == '__main__':
-    N = 4
-    x = torch.randn(N, 30, 14).to("cpu")
-    config = DAMCNNConfig()
-    model_ex = DAMCNN(config).to("cpu")
-    y = model_ex(x)
-    print(y.shape)
