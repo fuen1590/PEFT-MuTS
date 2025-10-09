@@ -2,7 +2,7 @@ from train import BaseConfig, build_flag
 import torch
 
 
-FEI_STATE_PATH = "/home/fuen/DeepLearningProjects/TimeSeriesProject/train/FMEI_results/FMEI_encResNet_mMin0.0_mMax0.7_mom995_dim64"
+FEI_STATE_PATH = "FEI_encResNet"
 
 class TrainConfig(BaseConfig):
     def __init__(self):
