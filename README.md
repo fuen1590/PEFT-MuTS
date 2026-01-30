@@ -1,4 +1,4 @@
-# PEFT-MuTS: A Parameter-Efficient Fine-Tuning Framework for Cross-Scenario Multivariate Remaining Useful Life Prediction with Limited Partial Life-Cycle Data
+# PEFT-MuTS: A Multivariate Parameter-Efficient Fine-Tuning Framework for Remaining Useful Life Prediction based on Cross-domain Time Series Representation Model
 
 This work presents a novel perspective based on cross-domain representation learning. By leveraging parameter-efficient fine-tuning (PEFT), it effectively addresses the few-shot Remaining Useful Life (RUL) prediction problem.
 The original paper is currently under review.
