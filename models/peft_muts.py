@@ -18,124 +18,6 @@ from base import AutoTestTrainableModule
 from configs.configs import PretrainedCNNConfig, PeftMuTSConfig
 
 
-class MixingLayer(nn.Module):
-    def __init__(self, extrac_dim: int, in_dim: int, inner_dim: int, num_tokens: int, dynamic=False, device="cuda"):
-        """
-        :param extrac_dim: the dimension of fused feature
-        :param in_dim: the dimension of input feature
-        :param inner_dim: the dimension of the Random Projection
-        :param num_tokens: the number of fusion tokens
-        :param dynamic: whether to use dynamic Random Projector, if True, the Random Projector will be different
-                        for every Batch samples, if False, the Random Projector will be constant and initialized
-                        while training start.
-        """
-        super().__init__()
-        self.num_tokens = num_tokens
-        self.in_dim = in_dim
-        self.extrac_dim = extrac_dim
-        self.dynamic = dynamic
-        self.random_projector = None
-        self.tokens = None
-        self.inner_dim = inner_dim
-        self.upper_mlp_q = nn.Linear(self.inner_dim, self.extrac_dim, bias=False)
-        self.upper_mlp_k = nn.Linear(self.inner_dim, self.extrac_dim, bias=False)
-        self.upper_mlp_v = nn.Linear(self.inner_dim, self.extrac_dim, bias=False)
-        self.token_mlp = nn.Sequential(
-            nn.Linear(self.extrac_dim, self.extrac_dim),
-            nn.SiLU(),
-            nn.Linear(self.extrac_dim, self.extrac_dim),
-        )
-        self.v_mlp_q = nn.Linear(self.extrac_dim, self.extrac_dim, bias=False)
-        self.v_mlp_k = nn.Linear(self.extrac_dim, self.extrac_dim, bias=False)
-        self.v_mlp_v = nn.Linear(self.extrac_dim, self.extrac_dim, bias=False)
-        self.out_mlp = nn.Sequential(
-            nn.Linear(self.extrac_dim, self.extrac_dim),
-            nn.SiLU(),
-            nn.Linear(self.extrac_dim, self.extrac_dim),
-        )
-        self.ln_1 = nn.LayerNorm(self.extrac_dim)
-        self.ln_2 = nn.LayerNorm(self.extrac_dim)
-        self.ln_3 = nn.LayerNorm(self.extrac_dim)
-        self.ln_4 = nn.LayerNorm(self.extrac_dim)
-        self.device = device
-        if not self.dynamic:
-            self._generate_random_projector()
-        self._init_tokens()
-
-    def forward(self, f, u=None):
-        """
-        f.shape = (B, N, T, D), D == in_dim
-        u.shape = (B, num, De), De == extrac_dim
-        """
-        B, N, T, D = f.shape
-        tokens = self.tokens  # (1, num, D)
-        tokens = tokens.unsqueeze(dim=-2).repeat((B, 1, T, 1))  # (B, num, T, D)
-        c_f = torch.concat([tokens, f], dim=1)  # (B, N, T, D), N=N+num
-        if self.dynamic:
-            self._generate_random_projector(B)
-            qkv = torch.einsum("bntd,sbdi->sbnti", c_f, self.random_projector)
-        else:
-            qkv = torch.einsum("bntd,sdi->sbnti", c_f, self.random_projector)
-        q, k, v = self.upper_mlp_q(qkv[0]), self.upper_mlp_k(qkv[1]), self.upper_mlp_v(qkv[2])  # (B, N, T, Du)
-        v, _ = self._attention(q, k, v)  # (B, N, T, Du)
-        f_tokens = v[:, :self.num_tokens].mean(dim=-2)  # (B, num, Du)
-        v = v[:, self.num_tokens:]  # (B, N, T, Du)  N = N-num
-        f_tokens = self.ln_1(self.token_mlp(f_tokens) - f_tokens)  # (B, num, Du)
-        if u is not None:
-            # f_tokens = self.ln_2(f_tokens + u).unsqueeze(dim=-2).repeat((1, 1, T, 1))  # (B, num, T, Du)
-            f_tokens = torch.concat([u, f_tokens], dim=-2).unsqueeze(dim=-2).repeat((1, 1, T, 1))  # (B, num, T, Du)
-            v_q = torch.concat([f_tokens, v], dim=1)  # (B, N, T, Du), N = N+num
-            q, k, v = self.v_mlp_q(v_q), self.v_mlp_k(v), self.v_mlp_v(v)
-            v_, _ = self._attention(q, k, v)
-            f_tokens = self.ln_3(v_[:, :self.num_tokens] + f_tokens[:, :self.num_tokens])
-            f_tokens = (self.out_mlp(f_tokens) + f_tokens).mean(dim=-2)
-        return f_tokens
-
-    def _generate_random_projector(self, batch=None):
-        if self.dynamic:
-            assert batch is not None
-            self.random_projector = torch.randn((3, batch, self.in_dim, self.inner_dim)).to(self.device)
-        else:
-            if self.random_projector is None:
-                self.random_projector = torch.randn((3, self.in_dim, self.inner_dim)).to(self.device)
-
-    def _init_tokens(self):
-        self.tokens = torch.randn((self.in_dim, self.num_tokens))
-        self.tokens = torch.linalg.qr(self.tokens)[0]
-        self.tokens = self.tokens.transpose(-1, -2).unsqueeze(dim=0)  # (1, k, D)
-        self.tokens = nn.Parameter(self.tokens, requires_grad=True)
-
-    def _attention(self, q, k, v):
-        """
-        q.shape = (B, N, T, D)
-        """
-        B, Nq, T, D = q.shape
-        B, Nk, T, D = k.shape
-        q_, k_, v_ = q.reshape(B, Nq, -1), k.reshape(B, Nk, -1), v.reshape(B, Nk, -1)
-        # q_, k_ = q_/torch.norm(q_, dim=-1, keepdim=True), k_/torch.norm(k_, dim=-1, keepdim=True)
-        att = torch.einsum("bnd,bmd->bnm", q_, k_) / self.extrac_dim ** 0.5
-        att = torch.softmax(-att, dim=-1)  # (B, Nq, Nk)
-        v_ = torch.einsum("bnm,bmd->bmd", att, v_)
-        v_ = v_.reshape(B, Nk, T, D)
-        return v_, att
-
-
-class AdapterModule(nn.Module):
-    def __init__(self, in_dim, hidden_dim):
-        super().__init__()
-        self.in_dim = in_dim
-        self.hidden_dim = hidden_dim
-        self.cnn = nn.Sequential(
-            nn.Linear(in_dim, hidden_dim),
-            nn.GELU(),
-            nn.Linear(hidden_dim, in_dim),
-        )
-        self.bn = nn.BatchNorm1d(in_dim)
-
-    def forward(self, x):
-        return self.cnn(x.transpose(-1, -2)).transpose(-1, -2) + x
-
-
 class PretrainedCNN(AutoTestTrainableModule):
     def __init__(self,
                  config: PretrainedCNNConfig):
@@ -307,18 +189,25 @@ class PeftMuTS(AutoTestTrainableModule):
         self.side_dim = config.side_dim
         self.side_layers = nn.ModuleList([SideNet(dim[0], dim[1], config.in_features, expert=dim[2])
                                           for dim in self.side_dim])
+        self.self_gate_layers = nn.ModuleList([
+            nn.Sequential(
+                nn.Linear(dim[1] // dim[2], dim[1] // dim[2]),
+                nn.Sigmoid()
+            )
+            for dim in self.side_dim
+        ])
         res_dim = [config.embed_dim, 128, 256, 512, 1024]
         self.DWConv_layers = nn.ModuleList([nn.Sequential(
             nn.Conv1d(
                 in_channels=res_dim[i],
-                out_channels=res_dim[i+1],
+                out_channels=res_dim[i + 1],
                 kernel_size=3,
                 stride=2,
                 padding=1,
                 groups=res_dim[i],
                 bias=False
             )
-        ) for i in range(len(res_dim)-1)])
+        ) for i in range(len(res_dim) - 1)])
         # self.output = nn.Sequential(nn.Linear(1024, 1))
         self.output = nn.Linear(1024, 1) if config.output_layer_mode == "norm" \
             else OutputLayer(1024)
@@ -356,17 +245,22 @@ class PeftMuTS(AutoTestTrainableModule):
     def feature_extractor(self, x):
         # x.shape = (B, T, N)
         B, T, N = x.shape
+        # x = x + self.temporal_tokens  # 该方案有一定作用！
         if self.fusion:
             x = torch.concat([self.global_token.repeat(B, 1, 1), x], dim=-1)
             N += 1
+        # token = self.global_token.repeat(B, 1, 1)  # (B, T, 1)
         x = x.reshape(B * N, T, 1)  # (B*N, T, 1)
 
         # f0 = self.shift_layer(self.input_embedding(x))  # (B*N, T, D)
         f0 = self.input_embedding(x)  # (B*N, T, D)
-        f0 = self.beta * f0 + self.phi if self.shift else f0
+        # token_0 = self.input_embedding(token)   # (B, T, D)
+        # f0 = self.beta * f0 + self.phi if self.shift else f0
+        # token = token_0.transpose(-1, -2)  # (B, D, T)
         f = f0.transpose(-1, -2)  # (B*N, D, T)
 
         s_f = 0
+        # t_f = 0
         i = 0  # encoder layers count
         j = 0  # DWConv count
         for layer in self.side_layers:
@@ -374,9 +268,11 @@ class PeftMuTS(AutoTestTrainableModule):
             if self.fusion:
                 router_a = layer.get_router(f)  # (B*N, T, E)
                 l_f = layer.low_rank(f)  # (B*N, T, Dr)
+                l_f = self.self_gate_layers[i](l_f) * l_f  # (B*N, T, Dr)
                 l_f = l_f.reshape(B, N, l_f.shape[-2], -1)  # (B, N, T, Dr)
-                l_f[:, 0:1] = self.silu(l_f + layer.bias, beta=1).mean(dim=-3, keepdim=True)  # (B, N, T, Dr)
-                l_f = l_f.reshape(B*N, l_f.shape[-2], -1)  # (B*N, T, Dr)
+                l_f_g = (l_f + layer.bias).mean(dim=-3, keepdim=True)  # (B, N, T, Dr)
+                l_f = torch.concat((l_f_g, l_f[:, 1:]), dim=1)
+                l_f = l_f.reshape(B * N, l_f.shape[-2], -1)  # (B*N, T, Dr)
                 h_f = layer.high_rank(l_f, router_a)  # (B*N, Ti, Di)
             else:
                 h_f = layer(f)
@@ -385,15 +281,14 @@ class PeftMuTS(AutoTestTrainableModule):
             if i % 2 == 0:
                 s_f = self.DWConv_layers[j](s_f.transpose(-1, -2)).transpose(-1, -2)  # (B*N, Di+1, Ti+1)
                 j += 1
-            # f = self.e_layers[i](f.transpose(-1, -2))  # (B*N, Di, Ti)
             f = self.e_layers[i](f.transpose(-1, -2))  # (B*N, Di, Ti)
-            f = f + self.silu(s_f.transpose(-1, -2), beta=0.01)
+            f = f + self.silu(s_f.transpose(-1, -2))
             i += 1
         f_out = f.mean(dim=-1, keepdim=False)  # (B*N, Di)
         if self.fusion:
             f_out = f_out.reshape(B, N, -1)[:, 0]
         else:
-            f_out = f_out.reshape(B, N, -1)[:, 0]
+            f_out = f_out.reshape(B, N, -1).mean(dim=-2)
         return f_out
 
     def compute_loss(self,
